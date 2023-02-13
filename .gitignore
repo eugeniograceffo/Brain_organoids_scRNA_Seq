@@ -2,3 +2,4 @@
 cell_ranger_files/barcodes.tsv.gz
 cell_ranger_files/features.tsv.gz
 cell_ranger_files/matrix.mtx.gz
+.DS_Store
