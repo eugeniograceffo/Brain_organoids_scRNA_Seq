@@ -2,7 +2,252 @@
 title: "scRNA-Seq Analysis of Cortical Brain Organoids"
 output: html_notebook
 ---
+## Intro
+
+```{r}
+## Load libraries
+library(Seurat)
+library(ggplot2)
+library(SingleR)
+library(dplyr)
+library(patchwork)
+#library(celldex)
+library(RColorBrewer)
+library(SingleCellExperiment)
+#library(DropletUtils)
+#library(usethis)
+library(tidyverse)
+#library(Matrix.utils)
+```
+
+```{r}
+## Load dataset
+mat <- Read10X("~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/cell_ranger_files")
+
+dimnames(mat)
+```
+
+```{r}
+## Create Seurat object
+srat <- CreateSeuratObject(counts = mat, project = "organoids") 
+srat
+```
+
+```{r}
+## Have a look
+mat <- NULL # saves RAM
+str(srat)
+
+meta <- srat@meta.data
+dim(meta)
+head(meta)
+
+```
+
+
+## Quality Control
+```{r}
+## Let's do some QC
+#mitochondrial contamination
+srat[["percent.mt"]] <- PercentageFeatureSet(srat, pattern = "^MT-")
+
+# ribosomial protein (RPS or RPL)
+srat[["percent.rb"]] <- PercentageFeatureSet(srat, pattern = "^RP[SL]")
+
+head(srat@meta.data, 5)
+```
+```{r}
+# Visualize QC metrics as a violin plot
+VlnPlot(srat, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+## looking at data, I would set 500<nFeature<9000 , perc.mt<12
+```
+```{r}
+# FeatureScatter is typically used to visualize feature-feature relationships, but can be used
+# for anything calculated by the object, i.e. columns in object metadata, PC scores etc.
+
+## Let's have a look at some correlations
+
+FeatureScatter(srat, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=12, linetype="dashed", color = "blue")
+FeatureScatter(srat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=500, linetype="dashed", color = "blue")
+FeatureScatter(srat, feature1 = "nCount_RNA", feature2 = "percent.rb")
+
+# as expected, higher mt % correlates with low counts ie dead cells
+```
+
+```{r}
+## apply filters
+srat <- subset(srat, subset = nFeature_RNA > 500 & nFeature_RNA < 9000 & percent.mt < 12)
+```
+
+## Normalization
+
+After removing unwanted cells from the dataset, the next step is to normalize the data. By default, we employ a global-scaling normalization method “LogNormalize” that normalizes the feature expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result. Normalized values are stored in pbmc[["RNA"]]@data.
+
+```{r}
+## Let's normalize
+srat <- NormalizeData(srat, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+## Feature Selection
+
+```{r}
+##Let's find the most variable features(genes) to use downstream
+srat <- FindVariableFeatures(srat, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(srat), 10)
+top10
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(srat)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE, xnudge = 0, ynudge = 0)
+
+plot1
+plot2
+```
+## Scaling
+
+Next, we apply a linear transformation (‘scaling’) that is a standard pre-processing step prior to dimensional reduction techniques like PCA. The ScaleData() function:
+
+-Shifts the expression of each gene, so that the mean expression across cells is 0
+-Scales the expression of each gene, so that the variance across cells is 1
+-This step gives equal weight in downstream analyses, so that highly-expressed genes do not dominate
+-The results of this are stored in pbmc[["RNA"]]@scale.data
+
+```{r}
+all.genes <- rownames(srat)
+srat <- ScaleData(srat, features = all.genes)
+```
+
+## Linear dimensionality reduction
+
+```{r}
+srat <- RunPCA(srat, features = VariableFeatures(object = srat))
+```
+
+```{r}
+# Visualize the PC loadings
+
+VizDimLoadings(srat, dims = 1:9, reduction = "pca") & 
+  theme(axis.text=element_text(size=5), axis.title=element_text(size=8,face="bold"))
+```
+```{r}
+# Visualize the heatmaps
+DimHeatmap(srat, dims = 1:15, nfeatures = 20, cells = 500, balanced = T)
+
+```
+
+```{r}
+## Let's assess how many PC we need for clustering
+
+ElbowPlot(srat)
+```
+The first big drop is at 10. We will start by using this value for clustering
+
+## Clustering
+```{r}
+srat <- FindNeighbors(srat, dims = 1:10) # 10 from before
+srat <- FindClusters(srat, resolution = 0.5)
+```
+### non-linear dimensional reduction UMAP
+
+```{r}
+srat <- RunUMAP(srat, dims = 1:10, verbose = F)
+table(srat@meta.data$seurat_clusters)  #shows the size of each cluster
+
+#Let's plot the UMAP
+DimPlot(srat,label.size = 4,repel = T,label = T)
+```
+```{r}
+## Intermediate file save
+saveRDS(srat, file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_intermediate.rds")
+```
+
+## Regress out Cell cycles
+```{r}
+# to be added
+```
 
 
 
+## Identifying the Markers of each cluster
+
+```{r}
+## List of known markers
+huCortex_celltype_markers <- list(
+  Ex=c("SLC17A7", "CAMK2A","CHN1","SV2B","NRGN"),
+  In=c("GAD1", "GAD2", "SLC32A1"),
+  Ast=c("GFAP", "AQP4", "SLC4A4"),
+  Oli=c("PLP1", "MBP", "MOBP", "MOG"),
+  Mic=c("CSF1R", "CD74", "P2RY12"),
+  Opc=c("OLIG1", "OLIG2", "PDGFRA", "SOX10", "APOD"),
+  Endo=c("ATP10A", "CLDN5", "FLT1", "VWF"),
+  Per=c("PTH1R", "SLC6A12", "SLC19A1", "COLEC12", "SLC12A7")
+)
+
+## Find the markers within cluster
+# find markers for every cluster compared to all remaining cells, report only the positive
+# ones
+srat.markers <- FindAllMarkers(srat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+srat.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 3, order_by = avg_log2FC)
+
+```
+```{r}
+## Visualize the expression of some markers
+
+FeaturePlot(srat, features = c("SLC17A7", "NRN1", "IGFBP5", "STMN2", "THRA"))
+
+VlnPlot(srat, features = c("SLC17A7", "GAD1", "GFAP", "PLP1", "THRA"))
+
+
+```
+```{r}
+## Excitatory neurons
+VlnPlot(srat, features = c("SLC17A7", "CAMK2A","CHN1","SV2B","NRGN"))
+FeaturePlot(srat, features = c("SLC17A7", "CAMK2A","CHN1","SV2B","NRGN"))
+```
+
+```{r}
+## Inhibitory neurons
+VlnPlot(srat, features = c("GAD1", "GAD2", "SLC32A1"))
+FeaturePlot(srat, features = c("GAD1", "GAD2", "SLC32A1"))
+```
+
+```{r}
+## Astrocytes
+VlnPlot(srat, features = c("GFAP", "AQP4", "SLC4A4"))
+FeaturePlot(srat, features = c("GFAP", "AQP4", "SLC4A4"))
+```
+
+
+
+```{r}
+## Visualize heatmap of all the markers (max 20) per cluster
+srat.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(srat, features = top10$gene) + NoLegend()
+```
+
+## Add new labels
+```{r}
+new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
+    "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(srat)
+srat <- RenameIdents(srat, new.cluster.ids)
+DimPlot(srat, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+
+
+
+
+```{r}
+## save
+saveRDS(srat, file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_results.rds")
+sessionInfo()
+```
 
