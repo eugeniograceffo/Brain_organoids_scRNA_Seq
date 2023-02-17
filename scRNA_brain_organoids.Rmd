@@ -30,6 +30,8 @@ dimnames(mat)
 ```{r}
 ## Create Seurat object
 srat <- CreateSeuratObject(counts = mat, project = "organoids") 
+
+srat <- readRDS(file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_results.rds") # reload if saved
 srat
 ```
 
@@ -221,7 +223,28 @@ FeaturePlot(srat, features = c("GAD1", "GAD2", "SLC32A1"))
 VlnPlot(srat, features = c("GFAP", "AQP4", "SLC4A4"))
 FeaturePlot(srat, features = c("GFAP", "AQP4", "SLC4A4"))
 ```
+```{r}
+## Radial Glia 
+VlnPlot(srat, features = c("VIM"))
+FeaturePlot(srat, features = c("VIM"))
+```
+```{r}
+## Outer Radial Glia 
+VlnPlot(srat, features = c("HOPX"))
+FeaturePlot(srat, features = c("HOPX"))
+```
+```{r}
+## Intermediate progenitor cells
+VlnPlot(srat, features = c("EOMES"))
+FeaturePlot(srat, features = c("EOMES"))
+```
 
+
+```{r}
+## Neurons
+VlnPlot(srat, features = c("STMN2"))
+FeaturePlot(srat, features = c("STMN2"))
+```
 
 
 ```{r}
