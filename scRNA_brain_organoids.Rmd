@@ -162,8 +162,21 @@ The procedure above removes all signal associated with cell cycle. In some cases
 As an alternative, we suggest regressing out the difference between the G2M and S phase scores. This means that signals separating non-cycling cells and cycling cells will be maintained, but differences in cell cycle phase among proliferating cells (which are often uninteresting), will be regressed out of the data
 
 ```{r}
+## done on server, takes >4h
 srat$CC.Difference <- srat$S.Score - srat$G2M.Score
 srat <- ScaleData(srat, vars.to.regress = "CC.Difference", features = rownames(srat))
+```
+```{r}
+## reload and visual inspection
+srat <- readRDS(file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_cell_cycle_regressed_out.rds") 
+
+```
+
+```{r}
+# Running a PCA on cell cycle genes again, to visualize the effects of regression
+
+srat <- RunPCA(srat, features = c(s.genes, g2m.genes))
+DimPlot(srat)
 ```
 
 
@@ -191,16 +204,17 @@ DimHeatmap(srat, dims = 1:15, nfeatures = 20, cells = 500, balanced = T)
 ElbowPlot(srat)
 ```
 The first big drop is at 10. We will start by using this value for clustering
+After regressing out cell cycle, elbow is at 9
 
 ## Clustering
 ```{r}
-srat <- FindNeighbors(srat, dims = 1:10) # 10 from before
+srat <- FindNeighbors(srat, dims = 1:9) # 10 from before
 srat <- FindClusters(srat, resolution = 0.5)
 ```
 ### non-linear dimensional reduction UMAP
 
 ```{r}
-srat <- RunUMAP(srat, dims = 1:10, verbose = F)
+srat <- RunUMAP(srat, dims = 1:9, verbose = F)
 table(srat@meta.data$seurat_clusters)  #shows the size of each cluster
 
 #Let's plot the UMAP
@@ -208,7 +222,7 @@ DimPlot(srat,label.size = 4,repel = T,label = T)
 ```
 ```{r}
 ## Intermediate file save
-saveRDS(srat, file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_intermediate.rds")
+saveRDS(srat, file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_cell_cycle_regressed_out.rds")
 ```
 
 
@@ -239,6 +253,36 @@ srat.markers %>%
     slice_max(n = 3, order_by = avg_log2FC)
 
 ```
+markers based on atlas https://www.proteinatlas.org/ 
+
+cluster 1 -> NRN1 endothelial, DDIT4 	T-cells - Immune response
+cluster 2 -> NTS 	Endocrine cells, 
+            LMO3 (Alveolar cells type 1, Astrocytes, Alveolar cells type 2, Excitatory neurons, Oligodendrocyte precursor cells), RUNX1T1 Inhibitory neurons, Oligodendrocyte precursor cells, Excitatory neurons, Bipolar cells, Microglial cells
+cluster 3 -> BHLHE22 Horizontal cells, Bipolar cells; 
+              BCL11A dendritic cells, B-cells, Excitatory neurons, Langerhans cells, Basal squamous epithelial cells,               Squamous epithelial cells, Inhibitory neurons; 
+              STMN2 Excitatory neurons, Horizontal cells, Inhibitory neurons
+cluster 4 -> PTN Endometrial stromal cells, Extravillous trophoblasts, Muller glia cells, Squamous epithelial cells;
+            FABP7 Muller glia cells;
+            TTYH1 Muller glia cells
+Cluster 5 -> Muller glia cells, Late spermatids, Excitatory neurons;
+            NHLH1 Oligodendrocytes
+            EOMES Intermediate progenitor cells
+cluster 6 -> LMO3 Alveolar cells type 1, Astrocytes, Alveolar cells type 2, Excitatory neurons, Oligodendrocyte precursor cells;
+            GPR22 Inhibitory neurons, Excitatory neurons;
+            GRIA2 Excitatory neurons, Oligodendrocyte precursor cells, Inhibitory neurons, Astrocytes, Oligodendrocytes, Horizontal cells
+cluster 7 -> TOP2A Cell cycle regulation;
+            CENPF Cell cycle regulation;
+            HIST1H4C Cell proliferation
+cluster 8 -> CENPF Cell proliferation ;
+            PTTG1 Langerhans cells, Spermatocytes;
+            KPNA2 Spermatocytes, Cell cycle regulation
+cluster 9 -> CRYAB Schwann cells;
+            FTL Macrophages;
+            HSPA1A Langerhans cells
+cluster 10 -> TTR and CLU hepatocytes; 
+          CRYAB schwann cells
+cluster 11 -> Fibroblasts
+
 ```{r}
 ## Visualize the expression of some markers
 
@@ -286,6 +330,12 @@ FeaturePlot(srat, features = c("EOMES"))
 ## Neurons
 VlnPlot(srat, features = c("STMN2"))
 FeaturePlot(srat, features = c("STMN2"))
+```
+
+```{r}
+## Fibroblasts
+VlnPlot(srat, features = c("COL3A1"))
+FeaturePlot(srat, features = c("COL3A1"))
 ```
 
 
